@@ -99,3 +99,69 @@ function validateParams(schema) {
         next();
     }
 }
+app.get('/', async (req, res) =>{
+    const result = await pool.query('SELECT * FROM biodata ORDER BY id');
+    return successResponse(res, 'Data berhasil diambil', result.rows);
+})
+
+app.post('/biodata', validateBody(biodataSchema), async (req, res) =>{
+    const {id, nama, nim, kelas} = req.body;
+    const result = await pool.query(
+        'INSERT INTO biodata (id, nama, nim, kelas) VALUES ($1, $2, $3, $4) RETURNING *',
+        [id ?? null, nama, nim, kelas]
+    )
+    return successResponse(res, 'Data berhasil ditambahkan', result.rows[0], 201)
+})
+
+app.put(
+    "/biodata/:id",
+    validateParams(idSchema), 
+    validateBody(
+        biodataSchema
+            .fork(["nama", "nim", "kelas"], (field) => field.required())
+            .fork(["id"], (field) => field.forbidden()),
+        ), 
+        async (req, res) => {
+            const {id} = req.params;
+            const {nama, nim, kelas} = req.body;
+
+            const result = await pool.query(
+                'UPDATE biodata SET nama=$1, nim=$2, kelas=$3 WHERE id=$4 RETURNING *',
+                [nama, nim, kelas, id]
+            )
+            if (result.rowCount === 0) {
+                return errorResponse(res, 'Data tidak ditemukan', null, 404)
+            }
+            return successResponse(res, 'Data berhasil diperbarui', result.rows[0])
+        },
+    );
+
+app.delete('/biodata/:id', validateParams(idSchema), async (req, res) => {
+    const {id} = req.params
+    const result = await pool.query(
+        'DELETE FROM biodata WHERE id=$1 RETURNING *',
+        [id]
+    )
+    if (result.rowCount === 0) {
+        return errorResponse(res, 'Data tidak ditemukan', null, 404)
+    }
+    return successResponse(res, 'Data berhasil dihapus', result.rows[0])
+})
+
+// if route tidak ditemukan
+app.use((req, res) => {
+    return errorResponse(res, 'Endpoint tidak ditemukan', null, 404)
+})
+
+//global error handler
+app.use((err, req, res, next) => {
+    console.error(err)
+    if (res.headersSent){
+        return next(err)
+    }
+    return errorResponse(res, 'Terjadi kesalahan pada server', null, 500)
+})
+
+app.listen(port, () => {
+    console.log(`App running on port ${port}.`)
+})
